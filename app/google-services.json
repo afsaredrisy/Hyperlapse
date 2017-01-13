@@ -1,0 +1,38 @@
+{
+  "project_info": {
+    "project_number": "802415581498",
+    "project_id": "firebase-hyperlapse"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:802415581498:android:87805c8189a7122e",
+        "android_client_info": {
+          "package_name": "com.sand5.videostabilize.hyperlapse"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDAuNoiHHCj4Qik1brrRVWUcijvLhCi29o"
+        }
+      ],
+      "services": {
+        "analytics_service": {
+          "status": 2,
+          "analytics_property": {
+            "tracking_id": "UA-65626564-7"
+          }
+        },
+        "appinvite_service": {
+          "status": 1,
+          "other_platform_oauth_client": []
+        },
+        "ads_service": {
+          "status": 1
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

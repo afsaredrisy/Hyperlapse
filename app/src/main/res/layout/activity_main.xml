@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/activity_main"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:paddingBottom="@dimen/activity_vertical_margin"
+    android:paddingLeft="@dimen/activity_horizontal_margin"
+    android:paddingRight="@dimen/activity_horizontal_margin"
+    android:paddingTop="@dimen/activity_vertical_margin"
+    tools:context="com.sand5.videostabilize.hyperlapse.MainActivity">
+
+    <Button
+        android:id="@+id/post_processing"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Post Processing" />
+
+    <Button
+        android:id="@+id/calibration_camera_activity"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="OpenCV calibration" />
+
+    <Button
+        android:id="@+id/opticalFlow_camera_activity"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="OpenCV optical flow" />
+
+    <Button
+        android:id="@+id/camera2_camera_activity"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Camera2" />
+
+    <Button
+        android:id="@+id/sensorFusion_camera_activity"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Sensor Fusion" />
+</LinearLayout>
