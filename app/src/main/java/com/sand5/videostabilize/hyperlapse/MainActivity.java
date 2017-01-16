@@ -4,21 +4,21 @@ import android.Manifest;
 import android.content.Intent;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
-import android.util.Log;
 import android.view.View;
 import android.widget.Button;
+import android.widget.Toast;
 
 import com.sand5.videostabilize.hyperlapse.camera2.activities.CameraActivity;
-import com.sand5.videostabilize.hyperlapse.tests.SensorFusionActivity;
+import com.sand5.videostabilize.hyperlapse.sensors.SensorTestActivity;
 import com.sand5.videostabilize.hyperlapse.tests.cameracalibration.CameraCalibrationActivity;
 import com.sand5.videostabilize.hyperlapse.tests.postprocessing.PostProcessingActivity;
 
 import butterknife.BindView;
 import butterknife.ButterKnife;
 import butterknife.OnClick;
-import kr.co.namee.permissiongen.PermissionFail;
 import kr.co.namee.permissiongen.PermissionGen;
-import kr.co.namee.permissiongen.PermissionSuccess;
+import pub.devrel.easypermissions.AfterPermissionGranted;
+import pub.devrel.easypermissions.EasyPermissions;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -28,6 +28,7 @@ public class MainActivity extends AppCompatActivity {
     }*/
 
     private static final String TAG = "MainActivity";
+    private static final int PERM_WRITE_STORAGE = 101;
 
     @BindView(R.id.post_processing)
     Button postProcessing;
@@ -75,7 +76,7 @@ public class MainActivity extends AppCompatActivity {
                 startActivity(new Intent(this, PostProcessingActivity.class));
                 break;
             case R.id.sensorFusion_camera_activity:
-                startActivity(new Intent(this, SensorFusionActivity.class));
+                startActivity(new Intent(this, SensorTestActivity.class));
                 break;
             case R.id.camera2_camera_activity:
                 startActivity(new Intent(this, CameraActivity.class));
@@ -84,19 +85,25 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions,
-                                           int[] grantResults) {
-        PermissionGen.onRequestPermissionsResult(this, requestCode, permissions, grantResults);
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+
+
+        EasyPermissions.onRequestPermissionsResult(requestCode, permissions, grantResults, this);
+        // Forward results to EasyPermissions
+        EasyPermissions.onRequestPermissionsResult(requestCode, permissions, grantResults, this);
     }
 
-    @PermissionSuccess(requestCode = 100)
-    public void doSomething() {
-        Log.d(TAG, "Permission granted,yay!");
-    }
-
-    @PermissionFail(requestCode = 100)
-    public void doFailSomething() {
-        Log.d(TAG, "Permission denied,daym!");
+    @AfterPermissionGranted(PERM_WRITE_STORAGE)
+    private void smsTask() {
+        if (EasyPermissions.hasPermissions(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)) {
+            // Have permission, do the thing!
+            Toast.makeText(this, "Write permission granted", Toast.LENGTH_LONG).show();
+        } else {
+            // Request one permission
+            EasyPermissions.requestPermissions(this, getString(R.string.permission_camera_rationale),
+                    PERM_WRITE_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE);
+        }
     }
 
 

@@ -30,8 +30,10 @@ import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.MediaRecorder;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.SystemClock;
 import android.support.annotation.NonNull;
 import android.support.v13.app.FragmentCompat;
 import android.support.v4.app.ActivityCompat;
@@ -48,8 +50,13 @@ import android.widget.Toast;
 
 import com.sand5.videostabilize.hyperlapse.R;
 import com.sand5.videostabilize.hyperlapse.camera2.utils.AutoFitTextureView;
+import com.sand5.videostabilize.hyperlapse.camera2.utils.CameraMetaDataHelper;
 import com.sand5.videostabilize.hyperlapse.camera2.utils.CameraSizeUtils;
 
+import org.json.JSONArray;
+
+import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -64,7 +71,7 @@ public class CameraFragment extends Fragment
         SensorEventListener {
 
     // TODO: 1/13/17 Start by checking hardware device level for camera parameters and sensors
-    // TODO: 1/13/17 Add gravity, geomagnet and linear acceleration sensors
+    // TODO: 1/13/17 Add gravity, geo-magnet and linear acceleration sensors
 
     //tags
     private static final String TAG = "Camera2VideoFragment";
@@ -82,8 +89,10 @@ public class CameraFragment extends Fragment
     private static final String FRAGMENT_DIALOG = "dialog";
     private static final String[] VIDEO_PERMISSIONS = {
             Manifest.permission.CAMERA,
-            Manifest.permission.RECORD_AUDIO,
-    };
+            Manifest.permission.RECORD_AUDIO};
+
+    private static final String SENSORTIMESTAMPLOG = "SensorTimeStampLog";
+    private static final String FRAMETIMESTAPLOGTAG = "FrameTimeStampLog";
 
     static {
         DEFAULT_ORIENTATIONS.append(Surface.ROTATION_0, 90);
@@ -99,15 +108,14 @@ public class CameraFragment extends Fragment
         INVERSE_ORIENTATIONS.append(Surface.ROTATION_270, 0);
     }
 
-    //Views
-
     private final float[] mRotationMatrix = new float[16];
-    float horizontalAngle, verticalAngle;
-
-
-    //Camera variables
-    float[] maxFocus;
-    Size sensorPhysicalSize;
+    long systemCurrentTimeMillis;
+    long nanoTime;
+    long elapsedRealtimeNanos;
+    long accelerometerTimeStamp;
+    long gyroscopeTimeStamp;
+    long rotationTimeStamp;
+    ArrayList<Long> frameTimeStampDelta = new ArrayList<>();
     /**
      * An {@link AutoFitTextureView} for camera preview.
      */
@@ -160,7 +168,7 @@ public class CameraFragment extends Fragment
     private CameraDevice.StateCallback mStateCallback = new CameraDevice.StateCallback() {
 
         @Override
-        public void onOpened(CameraDevice cameraDevice) {
+        public void onOpened(@NonNull CameraDevice cameraDevice) {
             mCameraDevice = cameraDevice;
             startPreview();
             mCameraOpenCloseLock.release();
@@ -170,14 +178,14 @@ public class CameraFragment extends Fragment
         }
 
         @Override
-        public void onDisconnected(CameraDevice cameraDevice) {
+        public void onDisconnected(@NonNull CameraDevice cameraDevice) {
             mCameraOpenCloseLock.release();
             cameraDevice.close();
             mCameraDevice = null;
         }
 
         @Override
-        public void onError(CameraDevice cameraDevice, int error) {
+        public void onError(@NonNull CameraDevice cameraDevice, int error) {
             mCameraOpenCloseLock.release();
             cameraDevice.close();
             mCameraDevice = null;
@@ -217,11 +225,12 @@ public class CameraFragment extends Fragment
         }
 
     };
-    private Surface mRecorderSurface;
     private SensorManager sensorManager;
-    private Sensor accelerometer, gyroscope, rotation, gravity, geomagnet;
-    private float[] accelerometerValues, gyroscopeValues, rotationValues, gravityValues, geoMagneticValues;
-    private Integer accelerometerAccuracy, gyroscopeAccuracy, rotationAccuracy, gravityAccuracy, geoMagneticAccuracy;
+    private Sensor accelerometer;
+    private Sensor gyroscope;
+    private Sensor rotation;
+    private JSONArray gyroscopeTimeStamps;
+    private JSONArray frameTimeStamps;
 
     public static CameraFragment newInstance() {
         return new CameraFragment();
@@ -237,9 +246,10 @@ public class CameraFragment extends Fragment
     public void onViewCreated(final View view, Bundle savedInstanceState) {
         mTextureView = (AutoFitTextureView) view.findViewById(R.id.texture);
         mButtonVideo = (Button) view.findViewById(R.id.video);
+        gyroscopeTimeStamps = new JSONArray();
+        frameTimeStamps = new JSONArray();
         mButtonVideo.setOnClickListener(this);
         initSensors();
-        view.findViewById(R.id.info).setOnClickListener(this);
     }
 
     @Override
@@ -276,11 +286,21 @@ public class CameraFragment extends Fragment
         }
     }
 
+    /**
+     * Get Hardware level of camera so we know which features are supported
+     *
+     * @param characteristics
+     */
+    private void getHardwareLevel(CameraCharacteristics characteristics) {
+        CameraMetaDataHelper.getHardwareLevelName(characteristics.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL));
+
+    }
 
     /**
      * Tries to open a {@link CameraDevice}. The result is listened by `mStateCallback`.
      */
     private void openCamera(int width, int height) {
+
         if (!hasPermissionsGranted(VIDEO_PERMISSIONS)) {
             requestVideoPermissions();
             return;
@@ -303,12 +323,12 @@ public class CameraFragment extends Fragment
             StreamConfigurationMap map = characteristics
                     .get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
 
-
             logAllCalibrationData(getActivity(), characteristics, mTextureView);
 
             mSensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
-            sensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
+            sensorOrientation = mSensorOrientation;
 
+            assert map != null;
             mVideoSize = CameraSizeUtils.chooseVideoSize(map.getOutputSizes(MediaRecorder.class));
             mPreviewSize = CameraSizeUtils.chooseOptimalSize(map.getOutputSizes(SurfaceTexture.class),
                     width, height, mVideoSize);
@@ -320,18 +340,11 @@ public class CameraFragment extends Fragment
                 mTextureView.setAspectRatio(mPreviewSize.getHeight(), mPreviewSize.getWidth());
             }
 
-
             configureTransform(width, height);
             mMediaRecorder = new MediaRecorder();
 
-            if (ActivityCompat.checkSelfPermission(getActivity(), Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-                // TODO: Consider calling
-                //    ActivityCompat#requestPermissions
-                // here to request the missing permissions, and then overriding
-                //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
-                //                                          int[] grantResults)
-                // to handle the case where the user grants the permission. See the documentation
-                // for ActivityCompat#requestPermissions for more details.
+            if (ActivityCompat.checkSelfPermission(activity, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                requestVideoPermissions();
                 return;
             }
 
@@ -450,7 +463,21 @@ public class CameraFragment extends Fragment
                     super.onCaptureCompleted(session, request, result);
                     Log.d(CAPTURELOGTAG, "onCaptureCompleted");
                     Log.d(CAPTURELOGTAG, "Rolling shutter skew: " + result.get(CaptureResult.SENSOR_ROLLING_SHUTTER_SKEW));
-                    Log.d(CAPTURELOGTAG, "Time stamp: " + result.get(CaptureResult.SENSOR_TIMESTAMP));
+
+                    long nano = System.nanoTime();
+                    long elapsedNanos = SystemClock.elapsedRealtimeNanos();
+                    long systemCurrentMillis = System.currentTimeMillis();
+                    long frameTimeStamp = result.get(CaptureResult.SENSOR_TIMESTAMP);
+
+                    frameTimeStampDelta.add(0, frameTimeStamp);
+                    String frameStamp = "SystemCurrentTimeMillis: " + systemCurrentMillis + "\n" +
+                            "SystemNano: " + nano + "\n" +
+                            "System ElapsedRTNanos: " + elapsedNanos + "\n" +
+                            "Frame Timestamp: " + frameTimeStamp + "\n" +
+                            "SystemNano - frame delta: " + (nano - frameTimeStamp) + "\n" +
+                            "SystemElapsed - frame delta: " + (elapsedNanos - frameTimeStamp) + "\n";
+                    frameTimeStamps.put(frameStamp);
+                    //Log.d(FRAMETIMESTAPLOGTAG, frameStamp);
                     Log.d(CAPTURELOGTAG, "Focal length: " + result.get(CaptureResult.LENS_FOCAL_LENGTH));
                     Log.d(CAPTURELOGTAG, "Frame Number: " + result.getFrameNumber());
 
@@ -475,6 +502,9 @@ public class CameraFragment extends Fragment
                 public void onCaptureSequenceCompleted(CameraCaptureSession session, int sequenceId, long frameNumber) {
                     super.onCaptureSequenceCompleted(session, sequenceId, frameNumber);
                     Log.d(CAPTURELOGTAG, "onCaptureSequenceCompleted");
+                    //printTimeStampData();
+                    calculateTimeStep();
+
                 }
 
                 @Override
@@ -487,11 +517,85 @@ public class CameraFragment extends Fragment
                 public void onCaptureBufferLost(CameraCaptureSession session, CaptureRequest request, Surface target, long frameNumber) {
                     super.onCaptureBufferLost(session, request, target, frameNumber);
                     Log.d(CAPTURELOGTAG, "onCaptureBufferLost");
+
                 }
             }, mBackgroundHandler);
         } catch (CameraAccessException e) {
             e.printStackTrace();
         }
+    }
+
+    private void calculateTimeStep() {
+        for (int i = 0; i < frameTimeStampDelta.size(); i++) {
+            long nextStamp = frameTimeStampDelta.get(i + 1);
+            long previousStamp = frameTimeStampDelta.get(i);
+            long timeStamp = nextStamp - previousStamp;
+            Log.d(CAPTURELOGTAG, "TIME STEP:" + timeStamp);
+        }
+    }
+
+    private void printTimeStampData() {
+
+        /*File myfile = new File(Environment.getExternalStorageDirectory(),"Hyperlapse Timestamps");
+        try {
+
+            if (!myfile.exists()) {
+                myfile.mkdirs();
+            }
+            if(myfile.exists() || myfile.createNewFile()){
+                FileOutputStream fos = new FileOutputStream(myfile);
+                ObjectOutputStream oos = new ObjectOutputStream(fos);
+                oos.writeObject(gyroscopeTimeStamps);
+                oos.writeObject(frameTimeStamps);
+                fos.close();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }*/
+        File root = new File(Environment.getExternalStorageDirectory(), "Hyperlapse Timestamps");
+        if (!root.exists()) {
+            root.mkdirs();
+        }
+        try {
+            String fileName = "GyroscopeTimeStamps.txt";
+            File gpxfile = new File(root, fileName);
+            FileWriter file = new FileWriter(gpxfile);
+            file.write(gyroscopeTimeStamps.toString());
+            file.flush();
+            file.close();
+            Toast.makeText(getActivity(), "Gyro Saved", Toast.LENGTH_SHORT).show();
+        } catch (IOException e) {
+            Log.e("TAG", "Error in Writing: " + e.getLocalizedMessage());
+        }
+
+        try {
+
+            String fileName = "FrameTimeStamps.txt";
+            File gpxfile = new File(root, fileName);
+            FileWriter file = new FileWriter(gpxfile);
+            file.write(frameTimeStamps.toString());
+            file.flush();
+            file.close();
+            Toast.makeText(getActivity(), "Frame Saved", Toast.LENGTH_SHORT).show();
+        } catch (IOException e) {
+            Log.e("TAG", "Error in Writing: " + e.getLocalizedMessage());
+        }
+
+        /*try {
+            File root = new File(Environment.getExternalStorageDirectory(), "Hyperlapse Timestamps");
+            if (!root.exists()) {
+                root.mkdirs();
+            }
+            String fileName = String.valueOf(System.currentTimeMillis()) + ".txt";
+            File gpxfile = new File(root, fileName);
+            FileWriter writer = new FileWriter(gpxfile);
+            writer.append(sBody);
+            writer.flush();
+            writer.close();
+            Toast.makeText(context, "Saved", Toast.LENGTH_SHORT).show();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }*/
     }
 
     private void setUpCaptureRequestBuilder(CaptureRequest.Builder builder) {
@@ -515,7 +619,7 @@ public class CameraFragment extends Fragment
             surfaces.add(previewSurface);
             mPreviewBuilder.addTarget(previewSurface);
             // Set up Surface for the MediaRecorder
-            mRecorderSurface = mMediaRecorder.getSurface();
+            Surface mRecorderSurface = mMediaRecorder.getSurface();
             surfaces.add(mRecorderSurface);
             mPreviewBuilder.addTarget(mRecorderSurface);
 
@@ -649,20 +753,65 @@ public class CameraFragment extends Fragment
     @Override
     public void onSensorChanged(SensorEvent event) {
         if (this.accelerometer != null && event.sensor.equals(this.accelerometer)) {
-            this.accelerometerValues = event.values;
+            float[] accelerometerValues = event.values;
+            accelerometerTimeStamp = event.timestamp;
             Log.d(SENSORSTAG, "Accelerometer Timestamp:" + event.timestamp);
             logSensorValues("Accelerometer", event);
         } else if (this.gyroscope != null && event.sensor.equals(this.gyroscope)) {
-            this.gyroscopeValues = event.values;
+
+            float[] gyroscopeValues = event.values;
+            //Gyroscope timestamp
+            gyroscopeTimeStamp = event.timestamp;
+            //Current time
+            systemCurrentTimeMillis = System.currentTimeMillis();
+            //Most precise timestamp, with 0 value being when device was last rebooted, used to measure delta with another timestamp on same device.
+            nanoTime = System.nanoTime();
+            //Nanoseconds since boot
+            elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos();
+
+            String timeStampData = "SystemCurrentTimeMillis: " + systemCurrentTimeMillis + "\n" +
+                    "SystemNano: " + nanoTime + "\n" +
+                    "SystemElapsedRTNanos: " + elapsedRealtimeNanos + "\n" +
+                    "Gyroscope: " + gyroscopeTimeStamp + "\n" +
+                    "SystemNano - Gyroscope delta: " + (nanoTime - gyroscopeTimeStamp) + "\n" +
+                    "SystemElapsed - Gyroscope delta: " + (elapsedRealtimeNanos - gyroscopeTimeStamp) + "\n";
+
+            //logTimeStampDataOnFile(getActivity(),timeStampData);
+
+            if (mIsRecordingVideo)
+                gyroscopeTimeStamps.put(timeStampData);
+            //Log.d(SENSORTIMESTAMPLOG, timeStampData);
+
+
             Log.d(SENSORSTAG, "Gyroscope Timestamp:" + event.timestamp);
             logSensorValues("Gyroscope", event);
         } else if (this.rotation != null && event.sensor.equals(this.rotation)) {
-            this.rotationValues = event.values;
+            float[] rotationValues = event.values;
+            rotationTimeStamp = event.timestamp;
             Log.d(SENSORSTAG, "Rotation Timestamp:" + event.timestamp);
             SensorManager.getRotationMatrixFromVector(
                     mRotationMatrix, event.values);
             Log.d(SENSORSTAG, "Rotation Matrix: " + Arrays.toString(mRotationMatrix));
             logSensorValues("Rotation", event);
+        }
+    }
+
+
+    public void logTimeStampDataOnFile(Context context, String sBody) {
+        try {
+            File root = new File(Environment.getExternalStorageDirectory(), "Hyperlapse Timestamps");
+            if (!root.exists()) {
+                root.mkdirs();
+            }
+            String fileName = String.valueOf(System.currentTimeMillis()) + ".txt";
+            File gpxfile = new File(root, fileName);
+            FileWriter writer = new FileWriter(gpxfile);
+            writer.append(sBody);
+            writer.flush();
+            writer.close();
+            Toast.makeText(context, "Saved", Toast.LENGTH_SHORT).show();
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 
@@ -678,11 +827,11 @@ public class CameraFragment extends Fragment
     @Override
     public void onAccuracyChanged(Sensor sensor, int accuracy) {
         if (sensor.equals(this.accelerometer)) {
-            this.accelerometerAccuracy = accuracy;
+            Integer accelerometerAccuracy = accuracy;
         } else if (sensor.equals(this.gyroscope)) {
-            this.gyroscopeAccuracy = accuracy;
+            Integer gyroscopeAccuracy = accuracy;
         } else if (sensor.equals(this.rotation)) {
-            this.rotationAccuracy = accuracy;
+            Integer rotationAccuracy = accuracy;
         }
     }
 
@@ -752,7 +901,6 @@ public class CameraFragment extends Fragment
         this.gyroscope = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
         // The accuracy of this sensor is lower than the normal rotation vector sensor,
         // but the power consumption is reduced. Better for background processing
-        this.geomagnet = sensorManager.getDefaultSensor(Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR);
         //this.gravity = sensorManager.getDefaultSensor(Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR);
         this.rotation = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR);
         mRotationMatrix[0] = 1;
@@ -766,21 +914,21 @@ public class CameraFragment extends Fragment
         if (this.accelerometer != null) {
             Log.d(SENSORSTAG, "registerSensors: Accelerometer");
             this.sensorManager
-                    .registerListener(this, this.accelerometer, SensorManager.SENSOR_DELAY_NORMAL);
+                    .registerListener(this, this.accelerometer, SensorManager.SENSOR_DELAY_FASTEST);
         } else {
             Log.d(SENSORSTAG, "registerSensors: Accelerometer not available!");
         }
 
         if (this.gyroscope != null) {
             Log.d(SENSORSTAG, "registerSensors: Gyroscope");
-            this.sensorManager.registerListener(this, this.gyroscope, SensorManager.SENSOR_DELAY_NORMAL);
+            this.sensorManager.registerListener(this, this.gyroscope, SensorManager.SENSOR_DELAY_FASTEST);
         } else {
             Log.d(SENSORSTAG, "registerSensors: Gyroscope not available!");
         }
 
         if (this.rotation != null) {
             Log.d(SENSORSTAG, "registerSensors: Rotation vector");
-            this.sensorManager.registerListener(this, this.rotation, SensorManager.SENSOR_DELAY_NORMAL);
+            this.sensorManager.registerListener(this, this.rotation, SensorManager.SENSOR_DELAY_FASTEST);
         } else {
             Log.d(SENSORSTAG, "registerSensors: Rotation vector not available!");
         }

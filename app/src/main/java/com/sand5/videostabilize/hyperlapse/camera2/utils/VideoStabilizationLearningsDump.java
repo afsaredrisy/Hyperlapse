@@ -9,7 +9,10 @@ public class VideoStabilizationLearningsDump {
 
     /**
      * Intrinsic parameters - Done!
+     * Rotation Matrix - Done!
      * TODO : Extrinsic parameters
+     * Time gap between frame and gyrotimestamp
+     * Rolling shutter estimation (from the book nigga!)
      */
 
 
@@ -67,6 +70,12 @@ public class VideoStabilizationLearningsDump {
      *
      *
      * Distortion Parameters
+     *
+     *
+     *
+     * Timestamp calibration is also an issue!
+     * http://stackoverflow.com/questions/39745796/synchronizing-sensorevent-timestamp-with-system-nanotime-or-systemclock-e
+     *
      *
      */
 

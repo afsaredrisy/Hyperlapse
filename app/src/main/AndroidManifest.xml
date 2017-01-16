@@ -48,14 +48,13 @@
             android:label="@string/app_name"
             android:screenOrientation="landscape" />
         <activity android:name=".tests.postprocessing.PostProcessingActivity" />
-
         <activity
             android:name=".camera2.activities.CameraActivity"
-            android:label="Camera"></activity>
-
+            android:label="Camera" />
         <activity
             android:name=".tests.SensorFusionActivity"
             android:label="@string/app_name" />
+        <activity android:name=".sensors.SensorTestActivity"></activity>
     </application>
 
 </manifest>
