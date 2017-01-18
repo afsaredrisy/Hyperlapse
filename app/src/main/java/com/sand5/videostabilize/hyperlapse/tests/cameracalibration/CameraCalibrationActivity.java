@@ -38,13 +38,8 @@ import org.opencv.android.LoaderCallbackInterface;
 import org.opencv.android.OpenCVLoader;
 import org.opencv.core.Mat;
 
-import hp.harsh.library.interfaces.PermissionInterface;
-import hp.harsh.library.manager.PermissionRequest;
-import hp.harsh.library.manager.PermissionResponse;
-import hp.harsh.library.utilbag.Permission;
-import hp.harsh.library.utilbag.PermissionCode;
 
-public class CameraCalibrationActivity extends AppCompatActivity implements CvCameraViewListener2, OnTouchListener, PermissionInterface {
+public class CameraCalibrationActivity extends AppCompatActivity implements CvCameraViewListener2, OnTouchListener {
     private static final String TAG = "OCVSample::Activity";
 
     private CameraBridgeViewBase mOpenCvCameraView;
@@ -59,13 +54,7 @@ public class CameraCalibrationActivity extends AppCompatActivity implements CvCa
             switch (status) {
                 case LoaderCallbackInterface.SUCCESS: {
                     Log.i(TAG, "OpenCV loaded successfully");
-                    new PermissionRequest(CameraCalibrationActivity.this,
-                            Permission.PERMISSION_CAMERA,
-                            PermissionCode.CODE_PERMISSION_CAMERA,
-                            R.string.permission_camera_rationale,
-                            R.string.permission_camera_denied,
-                            R.string.permission_enable_message, CameraCalibrationActivity.this)
-                            .checkPermission();
+
                 }
                 break;
                 default: {
@@ -234,31 +223,5 @@ public class CameraCalibrationActivity extends AppCompatActivity implements CvCa
         return false;
     }
 
-    @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        switch (requestCode) {
-            case PermissionCode.CODE_PERMISSION_CAMERA:
-                // Check granted permission for camera
-                new PermissionRequest(CameraCalibrationActivity.this,
-                        Permission.PERMISSION_CAMERA,
-                        PermissionCode.CODE_PERMISSION_CAMERA,
-                        R.string.permission_camera_rationale,
-                        R.string.permission_camera_denied,
-                        R.string.permission_enable_message, this)
-                        .onRequestPermissionsResult(CameraCalibrationActivity.this, requestCode, grantResults);
-                break;
-        }
-    }
 
-    @Override
-    public void onGranted(PermissionResponse permissionResponse) {
-        switch (permissionResponse.type) {
-            case PermissionCode.CODE_PERMISSION_CAMERA:
-                mOpenCvCameraView.enableView();
-                mOpenCvCameraView.setOnTouchListener(CameraCalibrationActivity.this);
-                break;
-
-        }
-    }
 }

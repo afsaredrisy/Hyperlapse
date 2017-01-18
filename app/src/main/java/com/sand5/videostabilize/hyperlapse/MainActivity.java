@@ -10,13 +10,12 @@ import android.widget.Toast;
 
 import com.sand5.videostabilize.hyperlapse.camera2.activities.CameraActivity;
 import com.sand5.videostabilize.hyperlapse.sensors.SensorTestActivity;
-import com.sand5.videostabilize.hyperlapse.tests.cameracalibration.CameraCalibrationActivity;
+import com.sand5.videostabilize.hyperlapse.tests.cameracalibration.OpticalFlowTestActivity;
 import com.sand5.videostabilize.hyperlapse.tests.postprocessing.PostProcessingActivity;
 
 import butterknife.BindView;
 import butterknife.ButterKnife;
 import butterknife.OnClick;
-import kr.co.namee.permissiongen.PermissionGen;
 import pub.devrel.easypermissions.AfterPermissionGranted;
 import pub.devrel.easypermissions.EasyPermissions;
 
@@ -47,11 +46,6 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         ButterKnife.bind(this);
-        PermissionGen.with(MainActivity.this)
-                .addRequestCode(100)
-                .permissions(
-                        Manifest.permission.CAMERA, Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.RECORD_AUDIO, Manifest.permission.READ_PHONE_STATE)
-                .request();
         // Example of a call to a native method
         /*TextView tv = (TextView) findViewById(R.id.sample_text);
         tv.setText(stringFromJNI());*/
@@ -70,7 +64,7 @@ public class MainActivity extends AppCompatActivity {
                 startActivity(new Intent(this, PostProcessingActivity.class));
                 break;
             case R.id.calibration_camera_activity:
-                startActivity(new Intent(this, CameraCalibrationActivity.class));
+                startActivity(new Intent(this, OpticalFlowTestActivity.class));
                 break;
             case R.id.opticalFlow_camera_activity:
                 startActivity(new Intent(this, PostProcessingActivity.class));

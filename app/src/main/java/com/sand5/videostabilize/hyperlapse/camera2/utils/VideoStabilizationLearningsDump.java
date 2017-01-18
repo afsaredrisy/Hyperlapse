@@ -8,6 +8,24 @@ public class VideoStabilizationLearningsDump {
 
 
     /**
+     * Learnings and understandings from the book
+     * 1)Work on gyroscope
+     * Retrieve gyro timestamps and 3axis coords
+     * Calculate angular velocity from 3 axis
+     * Interpolate so as to get the perfect angular velocity for a give timestamp
+     *
+     * 2)Training video
+     * Extract good features to track
+     * Use optical flow to find where they are in frames
+     * Correlate that with gyroscope data
+     * Use RANSAC to improve good features to track algo and we get epic homography! WOW!
+     *
+     * 3) Handling rotations
+     * Generate Transformation matrices using opencv rodriguez
+     */
+
+
+    /**
      * Intrinsic parameters - Done!
      * Rotation Matrix - Done!
      * TODO : Extrinsic parameters

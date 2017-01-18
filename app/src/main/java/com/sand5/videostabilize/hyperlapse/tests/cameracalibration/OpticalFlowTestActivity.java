@@ -19,12 +19,6 @@ import org.opencv.core.MatOfByte;
 import org.opencv.core.MatOfFloat;
 import org.opencv.core.MatOfPoint;
 import org.opencv.core.MatOfPoint2f;
-import org.opencv.core.Point;
-import org.opencv.core.Scalar;
-import org.opencv.imgproc.Imgproc;
-import org.opencv.video.Video;
-
-import java.util.List;
 
 public class OpticalFlowTestActivity extends AppCompatActivity implements CameraBridgeViewBase.CvCameraViewListener2 {
 
@@ -32,6 +26,7 @@ public class OpticalFlowTestActivity extends AppCompatActivity implements Camera
 
     private static final int VIEW_MODE_KLT_TRACKER = 0;
     private static final int VIEW_MODE_OPTICAL_FLOW = 1;
+    private final float[] mRotationMatrix = new float[16];
     MatOfPoint2f prevFeatures, nextFeatures;
     MatOfPoint features;
     MatOfByte status;
@@ -43,7 +38,6 @@ public class OpticalFlowTestActivity extends AppCompatActivity implements Camera
     private Mat mPrevGray;
     private MenuItem mItemPreviewKLT;
     private CameraBridgeViewBase mItemPreviewOpticalFlow, mOpenCvCameraView;
-
     private BaseLoaderCallback mLoaderCallback = new BaseLoaderCallback(this) {
         @Override
         public void onManagerConnected(int status) {
@@ -147,41 +141,7 @@ public class OpticalFlowTestActivity extends AppCompatActivity implements Camera
 
     @Override
     public Mat onCameraFrame(CameraBridgeViewBase.CvCameraViewFrame inputFrame) {
-        Log.d(TAG, "OnCameraFrame");
-        final int viewMode = mViewMode;
-        switch (viewMode) {
-            case VIEW_MODE_OPTICAL_FLOW:
-                mGray = inputFrame.gray();
-                if (features.toArray().length == 0) {
-                    int rowStep = 50, colStep = 100;
-                    int nRows = mGray.rows() / rowStep, nCols = mGray.cols() / colStep;
-                    Point points[] = new Point[nRows * nCols];
-                    for (int i = 0; i < nRows; i++) {
-                        for (int j = 0; j < nCols; j++) {
-                            points[i * nCols + j] = new Point(j * colStep, i * rowStep);
-                        }
-                    }
-                    features.fromArray(points);
-                    prevFeatures.fromList(features.toList());
-                    mPrevGray = mGray.clone();
-                    break;
-                }
-                nextFeatures.fromArray(prevFeatures.toArray());
-                Video.calcOpticalFlowPyrLK(mPrevGray, mGray,
-                        prevFeatures, nextFeatures, status, err);
-                List<Point> prevList = features.toList(),
-                        nextList = nextFeatures.toList();
-                Scalar color = new Scalar(255);
-                for (int i = 0; i < prevList.size(); i++) {
-                    Imgproc.line(mGray, prevList.get(i), nextList.get(i),
-                            color);
-                }
-                mPrevGray = mGray.clone();
-                break;
-            default:
-                mViewMode = VIEW_MODE_OPTICAL_FLOW;
-        }
-        return mGray;
+        return inputFrame.rgba();
     }
 
     @Override

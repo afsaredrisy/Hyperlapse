@@ -39,8 +39,8 @@ public class FOVCalculator {
         Rect activeRect = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
         Size outputStreamSize = new Size(mTextureView.getWidth(), mTextureView.getHeight());
         float[] angle = new float[2];
-        angle[0] = 2f * (float) Math.toDegrees(Math.atan(physicalSize.getWidth() / (2 * focalLength[0]))); // 横
-        angle[1] = 2f * (float) Math.toDegrees(Math.atan(physicalSize.getHeight() / (2 * focalLength[0]))); // 縦
+        angle[0] = 2f * (float) Math.toDegrees(Math.atan(physicalSize.getWidth() / (2 * focalLength[0])));
+        angle[1] = 2f * (float) Math.toDegrees(Math.atan(physicalSize.getHeight() / (2 * focalLength[0])));
         Log.d("FOV Angle", angle[0] + ", " + angle[1] + ", ");
         return angle;
     }

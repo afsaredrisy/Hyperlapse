@@ -37,8 +37,8 @@ public class SensorTestActivity extends AppCompatActivity implements SensorEvent
     @BindView(R.id.activity_sensor_test)
     LinearLayout activitySensorTest;
     private PrintStream mGyroFile;
-    private ArrayList<AccelerometerData> accelerometerDataArrayList;
-    private ArrayList<GyroscopeData> gyroscopeDataArrayList;
+    private ArrayList<TestAccelerometerData> testAccelerometerDataArrayList;
+    private ArrayList<TestGyroscopeData> testGyroscopeDataArrayList;
     private ArrayList<RotationData> rotationDataArrayList;
     private SensorManager mSensorManager;
     private Sensor accelerometer, gyroscope, rotation;
@@ -51,8 +51,8 @@ public class SensorTestActivity extends AppCompatActivity implements SensorEvent
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_sensor_test);
         ButterKnife.bind(this);
-        accelerometerDataArrayList = new ArrayList<>();
-        gyroscopeDataArrayList = new ArrayList<>();
+        testAccelerometerDataArrayList = new ArrayList<>();
+        testGyroscopeDataArrayList = new ArrayList<>();
         rotationDataArrayList = new ArrayList<>();
         mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         initSensors();

@@ -45,15 +45,9 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
-import hp.harsh.library.interfaces.PermissionInterface;
-import hp.harsh.library.manager.PermissionRequest;
-import hp.harsh.library.manager.PermissionResponse;
-import hp.harsh.library.utilbag.Permission;
-import hp.harsh.library.utilbag.PermissionCode;
-
 import static org.jcodec.scale.BitmapUtil.fromBitmap;
 
-public class PostProcessingActivity extends AppCompatActivity implements PermissionInterface {
+public class PostProcessingActivity extends AppCompatActivity {
 
 
     private static final String TAG = "MainActivity";
@@ -72,59 +66,11 @@ public class PostProcessingActivity extends AppCompatActivity implements Permiss
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_post_processing);
-        new PermissionRequest(PostProcessingActivity.this,
-                Permission.PERMISSION_READ_EXTERNAL_STORAGE,
-                PermissionCode.CODE_PERMISSION_READ_EXTERNAL_STORAGE,
-                R.string.permission_camera_rationale,
-                R.string.permission_camera_denied,
-                R.string.permission_enable_message, PostProcessingActivity.this)
-                .checkPermission();
+        pickVideo();
 
-        new PermissionRequest(PostProcessingActivity.this,
-                Permission.PERMISSION_WRITE_EXTERNAL_STORAGE,
-                PermissionCode.CODE_PERMISSION_WRITE_EXTERNAL_STORAGE,
-                R.string.permission_camera_rationale,
-                R.string.permission_camera_denied,
-                R.string.permission_enable_message, PostProcessingActivity.this)
-                .checkPermission();
     }
 
-    @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        switch (requestCode) {
-            case PermissionCode.CODE_PERMISSION_READ_EXTERNAL_STORAGE:
-                // Check granted permission for camera
-                new PermissionRequest(PostProcessingActivity.this,
-                        Permission.PERMISSION_READ_EXTERNAL_STORAGE,
-                        PermissionCode.CODE_PERMISSION_READ_EXTERNAL_STORAGE,
-                        R.string.permission_camera_rationale,
-                        R.string.permission_camera_denied,
-                        R.string.permission_enable_message, this)
-                        .onRequestPermissionsResult(PostProcessingActivity.this, requestCode, grantResults);
-                break;
-            case PermissionCode.CODE_PERMISSION_WRITE_EXTERNAL_STORAGE:
-                // Check granted permission for camera
-                new PermissionRequest(PostProcessingActivity.this,
-                        Permission.PERMISSION_WRITE_EXTERNAL_STORAGE,
-                        PermissionCode.CODE_PERMISSION_WRITE_EXTERNAL_STORAGE,
-                        R.string.permission_camera_rationale,
-                        R.string.permission_camera_denied,
-                        R.string.permission_enable_message, this)
-                        .onRequestPermissionsResult(PostProcessingActivity.this, requestCode, grantResults);
-                break;
-        }
-    }
 
-    @Override
-    public void onGranted(PermissionResponse permissionResponse) {
-        switch (permissionResponse.type) {
-            case PermissionCode.CODE_PERMISSION_READ_EXTERNAL_STORAGE:
-                pickVideo();
-                break;
-
-        }
-    }
 
     private void processVideo(String absolutePath) {
         Log.d(TAG, "Processing video into frames");

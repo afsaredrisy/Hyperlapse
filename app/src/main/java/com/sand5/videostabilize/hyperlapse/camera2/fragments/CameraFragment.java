@@ -2,15 +2,14 @@ package com.sand5.videostabilize.hyperlapse.camera2.fragments;
 
 import android.Manifest;
 import android.app.Activity;
-import android.app.AlertDialog;
-import android.app.Dialog;
-import android.app.DialogFragment;
 import android.app.Fragment;
 import android.content.Context;
-import android.content.DialogInterface;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
+import android.graphics.ImageFormat;
 import android.graphics.Matrix;
+import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.SurfaceTexture;
 import android.hardware.Sensor;
@@ -28,6 +27,8 @@ import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.StreamConfigurationMap;
+import android.media.Image;
+import android.media.ImageReader;
 import android.media.MediaRecorder;
 import android.os.Bundle;
 import android.os.Environment;
@@ -35,6 +36,7 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.SystemClock;
 import android.support.annotation.NonNull;
+import android.support.design.widget.Snackbar;
 import android.support.v13.app.FragmentCompat;
 import android.support.v4.app.ActivityCompat;
 import android.util.Log;
@@ -48,23 +50,49 @@ import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.Toast;
 
+import com.orhanobut.logger.Logger;
 import com.sand5.videostabilize.hyperlapse.R;
+import com.sand5.videostabilize.hyperlapse.camera2.activities.VideoDecoderActivity;
+import com.sand5.videostabilize.hyperlapse.camera2.beans.AccelerometerData;
+import com.sand5.videostabilize.hyperlapse.camera2.beans.FrameTimeStampData;
+import com.sand5.videostabilize.hyperlapse.camera2.beans.GyroscopeData;
+import com.sand5.videostabilize.hyperlapse.camera2.beans.IntrinsicMatrix;
+import com.sand5.videostabilize.hyperlapse.camera2.beans.RotationVectorData;
 import com.sand5.videostabilize.hyperlapse.camera2.utils.AutoFitTextureView;
 import com.sand5.videostabilize.hyperlapse.camera2.utils.CameraMetaDataHelper;
 import com.sand5.videostabilize.hyperlapse.camera2.utils.CameraSizeUtils;
+import com.sand5.videostabilize.hyperlapse.camera2.utils.ConfirmationDialog;
+import com.sand5.videostabilize.hyperlapse.camera2.utils.ErrorDialog;
+import com.sand5.videostabilize.hyperlapse.camera2.utils.FOVCalculator;
+import com.sand5.videostabilize.hyperlapse.camera2.utils.ImageUtils;
 
-import org.json.JSONArray;
+import org.greenrobot.eventbus.EventBus;
+import org.opencv.android.BaseLoaderCallback;
+import org.opencv.android.LoaderCallbackInterface;
+import org.opencv.android.OpenCVLoader;
+import org.opencv.core.CvType;
+import org.opencv.core.Mat;
+import org.opencv.imgproc.Imgproc;
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.ObjectOutputStream;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
+import butterknife.BindView;
+import butterknife.ButterKnife;
+
+import static android.R.id.list;
 import static com.sand5.videostabilize.hyperlapse.camera2.utils.CameraParameterLogging.logAllCalibrationData;
+import static com.sand5.videostabilize.hyperlapse.camera2.utils.FileUtils.getVideoFilePath;
+import static com.sand5.videostabilize.hyperlapse.tests.SensorFusionActivity.EPSILON;
 
 public class CameraFragment extends Fragment
         implements View.OnClickListener, FragmentCompat.OnRequestPermissionsResultCallback,
@@ -73,27 +101,26 @@ public class CameraFragment extends Fragment
     // TODO: 1/13/17 Start by checking hardware device level for camera parameters and sensors
     // TODO: 1/13/17 Add gravity, geo-magnet and linear acceleration sensors
 
+    //permissions
+    public static final int REQUEST_VIDEO_PERMISSIONS = 1;
+    public static final String[] VIDEO_PERMISSIONS = {
+            Manifest.permission.CAMERA,
+            Manifest.permission.RECORD_AUDIO};
     //tags
     private static final String TAG = "Camera2VideoFragment";
     private static final String SENSORSTAG = "SensorsParameters";
     private static final String CAPTURELOGTAG = "CaptureParameters";
-
-
+    private static final String SENSORTIMESTAMPLOG = "SensorTimeStampLog";
+    private static final String FRAMETIMESTAPLOGTAG = "FrameTimeStampLog";
     //orientation variablies
     private static final int SENSOR_ORIENTATION_DEFAULT_DEGREES = 90;
     private static final int SENSOR_ORIENTATION_INVERSE_DEGREES = 270;
     private static final SparseIntArray DEFAULT_ORIENTATIONS = new SparseIntArray();
     private static final SparseIntArray INVERSE_ORIENTATIONS = new SparseIntArray();
-    //permissions
-    private static final int REQUEST_VIDEO_PERMISSIONS = 1;
     private static final String FRAGMENT_DIALOG = "dialog";
-    private static final String[] VIDEO_PERMISSIONS = {
-            Manifest.permission.CAMERA,
-            Manifest.permission.RECORD_AUDIO};
+    private static final float NS2S = 1.0f / 1000000000.0f;
 
-    private static final String SENSORTIMESTAMPLOG = "SensorTimeStampLog";
-    private static final String FRAMETIMESTAPLOGTAG = "FrameTimeStampLog";
-
+    //orientation constants
     static {
         DEFAULT_ORIENTATIONS.append(Surface.ROTATION_0, 90);
         DEFAULT_ORIENTATIONS.append(Surface.ROTATION_90, 0);
@@ -109,26 +136,14 @@ public class CameraFragment extends Fragment
     }
 
     private final float[] mRotationMatrix = new float[16];
-    long systemCurrentTimeMillis;
-    long nanoTime;
-    long elapsedRealtimeNanos;
-    long accelerometerTimeStamp;
-    long gyroscopeTimeStamp;
-    long rotationTimeStamp;
-    ArrayList<Long> frameTimeStampDelta = new ArrayList<>();
+    private final float[] deltaRotationVector = new float[4];
     /**
      * An {@link AutoFitTextureView} for camera preview.
      */
-    private AutoFitTextureView mTextureView;
+    @BindView(R.id.texture)
+    AutoFitTextureView mTextureView;
     private Button mButtonVideo;
-    /**
-     * A reference to the opened {@link CameraDevice}.
-     */
     private CameraDevice mCameraDevice;
-    /**
-     * A reference to the current {@link CameraCaptureSession} for
-     * preview.
-     */
     private CameraCaptureSession mPreviewSession;
     /**
      * The {@link Size} of camera preview.
@@ -138,13 +153,7 @@ public class CameraFragment extends Fragment
      * The {@link Size} of video recording.
      */
     private Size mVideoSize;
-    /**
-     * MediaRecorder
-     */
     private MediaRecorder mMediaRecorder;
-    /**
-     * Whether the app is recording video now
-     */
     private boolean mIsRecordingVideo;
     /**
      * An additional thread for running tasks that shouldn't block the UI.
@@ -160,8 +169,42 @@ public class CameraFragment extends Fragment
     private Semaphore mCameraOpenCloseLock = new Semaphore(1);
     private int sensorOrientation;
     private Integer mSensorOrientation;
-    private String mNextVideoAbsolutePath;
+    private String videoFilePath;
     private CaptureRequest.Builder mPreviewBuilder;
+    private SensorManager sensorManager;
+    private Sensor accelerometer;
+    private Sensor gyroscope;
+    private Sensor rotation;
+    private ArrayList<FrameTimeStampData> frameTimeStampDataArrayList = new ArrayList<>();
+    private ArrayList<GyroscopeData> gyroscopeDataArrayList = new ArrayList<>();
+    private ArrayList<RotationVectorData> rotationVectorDataArrayList = new ArrayList<>();
+    private ArrayList<AccelerometerData> accelerometerDataArrayList = new ArrayList<>();
+    private float focalLength = 0;
+    private long rollingShutterSkew = 0L;
+    private String hardwareLevel;
+    private IntrinsicMatrix intrinsicMatrix;
+    private float[] focalLengthAngles;
+    private float focusDistance;
+    private float principlePoints[];
+    private Rect activeRect;
+    private int rectangleWidth;
+    private int rectangleHeight;
+    private ImageReader mImageReader;
+    private ArrayList<Mat> imageArrayList = new ArrayList<>();
+    ImageReader.OnImageAvailableListener mImageAvailable = new ImageReader.OnImageAvailableListener() {
+        @Override
+        public void onImageAvailable(ImageReader reader) {
+            Logger.d("ON IMAGE AVAILABLE");
+            Image image = reader.acquireLatestImage();
+            Mat mat = ImageUtils.imageToMat(image);
+            Mat bgrMat = new Mat(image.getHeight(), image.getWidth(), CvType.CV_8UC4);
+            Imgproc.cvtColor(mat, bgrMat, Imgproc.COLOR_YUV2BGR_I420);
+            if (imageArrayList.size() < 90) {
+                imageArrayList.add(0, bgrMat);
+            }
+            image.close();
+        }
+    };
     /**
      * {@link CameraDevice.StateCallback} is called when {@link CameraDevice} changes its status.
      */
@@ -225,12 +268,21 @@ public class CameraFragment extends Fragment
         }
 
     };
-    private SensorManager sensorManager;
-    private Sensor accelerometer;
-    private Sensor gyroscope;
-    private Sensor rotation;
-    private JSONArray gyroscopeTimeStamps;
-    private JSONArray frameTimeStamps;
+    private BaseLoaderCallback mLoaderCallback = new BaseLoaderCallback(getActivity()) {
+        @Override
+        public void onManagerConnected(int status) {
+            switch (status) {
+                case LoaderCallbackInterface.SUCCESS: {
+                    Log.d(TAG, "OpenCV loaded successfully");
+                }
+                break;
+                default: {
+                    super.onManagerConnected(status);
+                }
+                break;
+            }
+        }
+    };
 
     public static CameraFragment newInstance() {
         return new CameraFragment();
@@ -239,15 +291,14 @@ public class CameraFragment extends Fragment
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
                              Bundle savedInstanceState) {
-        return inflater.inflate(R.layout.fragment_camera2_video, container, false);
+        View mView = inflater.inflate(R.layout.fragment_camera2_video, container, false);
+        ButterKnife.bind(this, mView);
+        return mView;
     }
 
     @Override
     public void onViewCreated(final View view, Bundle savedInstanceState) {
-        mTextureView = (AutoFitTextureView) view.findViewById(R.id.texture);
         mButtonVideo = (Button) view.findViewById(R.id.video);
-        gyroscopeTimeStamps = new JSONArray();
-        frameTimeStamps = new JSONArray();
         mButtonVideo.setOnClickListener(this);
         initSensors();
     }
@@ -261,6 +312,14 @@ public class CameraFragment extends Fragment
             openCamera(mTextureView.getWidth(), mTextureView.getHeight());
         } else {
             mTextureView.setSurfaceTextureListener(mSurfaceTextureListener);
+        }
+
+        if (!OpenCVLoader.initDebug()) {
+            Log.d(TAG, "Internal OpenCV library not found. Using OpenCV Manager for initialization");
+            OpenCVLoader.initAsync(OpenCVLoader.OPENCV_VERSION_3_0_0, getActivity(), mLoaderCallback);
+        } else {
+            Log.d(TAG, "OpenCV library found inside package. Using it!");
+            mLoaderCallback.onManagerConnected(LoaderCallbackInterface.SUCCESS);
         }
     }
 
@@ -287,16 +346,6 @@ public class CameraFragment extends Fragment
     }
 
     /**
-     * Get Hardware level of camera so we know which features are supported
-     *
-     * @param characteristics
-     */
-    private void getHardwareLevel(CameraCharacteristics characteristics) {
-        CameraMetaDataHelper.getHardwareLevelName(characteristics.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL));
-
-    }
-
-    /**
      * Tries to open a {@link CameraDevice}. The result is listened by `mStateCallback`.
      */
     private void openCamera(int width, int height) {
@@ -316,10 +365,9 @@ public class CameraFragment extends Fragment
                 throw new RuntimeException("Time out waiting to lock camera opening.");
             }
             String cameraId = manager.getCameraIdList()[0];
-
-            // Choose the sizes for camera preview and video recording
             CameraCharacteristics characteristics = manager.getCameraCharacteristics(cameraId);
-
+            hardwareLevel = CameraMetaDataHelper.getHardwareLevelName(characteristics.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL));
+            // Choose the sizes for camera preview and video recording
             StreamConfigurationMap map = characteristics
                     .get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
 
@@ -327,9 +375,21 @@ public class CameraFragment extends Fragment
 
             mSensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
             sensorOrientation = mSensorOrientation;
+            focalLengthAngles = FOVCalculator.calculateFOV2(characteristics, mTextureView);
 
             assert map != null;
             mVideoSize = CameraSizeUtils.chooseVideoSize(map.getOutputSizes(MediaRecorder.class));
+
+            principlePoints = new float[2];
+            principlePoints[0] = mVideoSize.getWidth();
+            principlePoints[1] = mVideoSize.getHeight();
+
+            mImageReader = ImageReader.newInstance(mVideoSize.getWidth(),
+                    mVideoSize.getHeight(),
+                    ImageFormat.YUV_420_888, 1);
+
+            mImageReader.setOnImageAvailableListener(mImageAvailable, mBackgroundHandler);
+
             mPreviewSize = CameraSizeUtils.chooseOptimalSize(map.getOutputSizes(SurfaceTexture.class),
                     width, height, mVideoSize);
 
@@ -343,11 +403,11 @@ public class CameraFragment extends Fragment
             configureTransform(width, height);
             mMediaRecorder = new MediaRecorder();
 
+            //Permission checker
             if (ActivityCompat.checkSelfPermission(activity, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
                 requestVideoPermissions();
                 return;
             }
-
             manager.openCamera(cameraId, mStateCallback, null);
         } catch (CameraAccessException e) {
             Toast.makeText(activity, "Cannot access the camera.", Toast.LENGTH_SHORT).show();
@@ -361,7 +421,6 @@ public class CameraFragment extends Fragment
             throw new RuntimeException("Interrupted while trying to lock camera opening.");
         }
     }
-
 
     private void closeCamera() {
         try {
@@ -395,8 +454,10 @@ public class CameraFragment extends Fragment
             assert texture != null;
             texture.setDefaultBufferSize(mPreviewSize.getWidth(), mPreviewSize.getHeight());
             mPreviewBuilder = mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
+            List surfaces = new ArrayList<>();
 
             Surface previewSurface = new Surface(texture);
+            surfaces.add(previewSurface);
             mPreviewBuilder.addTarget(previewSurface);
 
             mCameraDevice.createCaptureSession(Arrays.asList(previewSurface), new CameraCaptureSession.StateCallback() {
@@ -411,7 +472,7 @@ public class CameraFragment extends Fragment
                 public void onConfigureFailed(CameraCaptureSession cameraCaptureSession) {
                     Activity activity = getActivity();
                     if (null != activity) {
-                        Toast.makeText(activity, "Failed", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(activity, getResources().getString(R.string.error_configure_failed), Toast.LENGTH_SHORT).show();
                     }
                 }
             }, mBackgroundHandler);
@@ -459,17 +520,28 @@ public class CameraFragment extends Fragment
                 }
 
                 @Override
-                public void onCaptureCompleted(CameraCaptureSession session, CaptureRequest request, TotalCaptureResult result) {
+                public void onCaptureCompleted(CameraCaptureSession session, @NonNull CaptureRequest request, TotalCaptureResult result) {
                     super.onCaptureCompleted(session, request, result);
+
+                    rollingShutterSkew = result.get(CaptureResult.SENSOR_ROLLING_SHUTTER_SKEW);
+                    focalLength = result.get(CaptureResult.LENS_FOCAL_LENGTH);
+                    focusDistance = result.get(CaptureResult.LENS_FOCUS_DISTANCE);
                     Log.d(CAPTURELOGTAG, "onCaptureCompleted");
+
+                    /*
                     Log.d(CAPTURELOGTAG, "Rolling shutter skew: " + result.get(CaptureResult.SENSOR_ROLLING_SHUTTER_SKEW));
+                    Log.d(CAPTURELOGTAG, "Focal Length of lens: " + result.get(CaptureResult.LENS_FOCAL_LENGTH));
+
 
                     long nano = System.nanoTime();
                     long elapsedNanos = SystemClock.elapsedRealtimeNanos();
                     long systemCurrentMillis = System.currentTimeMillis();
                     long frameTimeStamp = result.get(CaptureResult.SENSOR_TIMESTAMP);
 
-                    frameTimeStampDelta.add(0, frameTimeStamp);
+                    FrameTimeStampData data = new FrameTimeStampData(systemCurrentMillis,nano,elapsedNanos,frameTimeStamp);
+                    frameTimeStampDataArrayList.add(data);*/
+
+                    /*frameTimeStampDelta.add(0, frameTimeStamp);
                     String frameStamp = "SystemCurrentTimeMillis: " + systemCurrentMillis + "\n" +
                             "SystemNano: " + nano + "\n" +
                             "System ElapsedRTNanos: " + elapsedNanos + "\n" +
@@ -484,7 +556,7 @@ public class CameraFragment extends Fragment
 
                     //result.getKeys();
                     //Log.d(CAPTURELOGTAG,"Result keys:" + result.getKeys().toString());
-                    /*List<CaptureResult> partialResult = result.getPartialResults();
+                    List<CaptureResult> partialResult = result.getPartialResults();
                     for(CaptureResult result1 : partialResult){
                        // result1.getKeys();
                         Long rollingShuterSkew = result1.get(CaptureResult.SENSOR_ROLLING_SHUTTER_SKEW);
@@ -502,8 +574,10 @@ public class CameraFragment extends Fragment
                 public void onCaptureSequenceCompleted(CameraCaptureSession session, int sequenceId, long frameNumber) {
                     super.onCaptureSequenceCompleted(session, sequenceId, frameNumber);
                     Log.d(CAPTURELOGTAG, "onCaptureSequenceCompleted");
+                    intrinsicMatrix = new IntrinsicMatrix(rollingShutterSkew, focalLength, focusDistance, focalLengthAngles, principlePoints);
+                    saveVideoProcessingData();
                     //printTimeStampData();
-                    calculateTimeStep();
+                    //calculateTimeStep();
 
                 }
 
@@ -525,13 +599,67 @@ public class CameraFragment extends Fragment
         }
     }
 
+    /**
+     * Initial data that is required
+     * Gyroscope time stamp and rotations on all axis (DONE)
+     * Rotation vectors with the time stamps (DONE)
+     * Accelerometer data
+     * Frame time stamps
+     * Focal Length of lens (DONE) by obtaining FOV)
+     * Delay between gyroscope and frame timestamps
+     * Bias in gyroscope (TODO)
+     * Duration of rolling shutter (DONE)
+     */
+    private void saveVideoProcessingData() {
+        //Send gyroscope data
+        //EventBus.getDefault().postSticky(gyroscopeDataArrayList);
+        //Send accelerometer data
+        //EventBus.getDefault().postSticky(accelerometerDataArrayList);
+        //Send rotationVector data
+        //EventBus.getDefault().postSticky(rotationVectorDataArrayList);
+        //Send intrinsic matrix data
+        EventBus.getDefault().postSticky(intrinsicMatrix);
+        ArrayList<ArrayList> bundleList = new ArrayList<>();
+        bundleList.add(gyroscopeDataArrayList);
+        bundleList.add(accelerometerDataArrayList);
+        bundleList.add(rotationVectorDataArrayList);
+        bundleList.add(imageArrayList);
+        EventBus.getDefault().postSticky(bundleList);
+        //Start postprocessing activity
+        Intent postPostprocessing = new Intent(getActivity(), VideoDecoderActivity.class);
+        startActivity(postPostprocessing);
+    }
+
+    private void saveArrayListToFile() {
+        if (Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState())) {
+            try {
+                // create a file in downloads directory
+                FileOutputStream fos =
+                        new FileOutputStream(
+                                new File(Environment.getExternalStorageDirectory(), "name.ser")
+                        );
+                ObjectOutputStream os = new ObjectOutputStream(fos);
+                os.writeObject(list);
+                os.close();
+                Log.v("MyApp", "File has been written");
+            } catch (Exception ex) {
+                ex.printStackTrace();
+                Log.v("MyApp", "File didn't write");
+            }
+        }
+    }
+
     private void calculateTimeStep() {
-        for (int i = 0; i < frameTimeStampDelta.size(); i++) {
-            long nextStamp = frameTimeStampDelta.get(i + 1);
-            long previousStamp = frameTimeStampDelta.get(i);
-            long timeStamp = nextStamp - previousStamp;
+        for (int i = 0; i < frameTimeStampDataArrayList.size() - 1; i++) {
+            long currentFrameTimeStamp = frameTimeStampDataArrayList.get(i + 1).getFrameTimeStamp();
+            long nextFrameTimeStamp = frameTimeStampDataArrayList.get(i).getFrameTimeStamp();
+            long timeStamp = currentFrameTimeStamp - nextFrameTimeStamp;
             Log.d(CAPTURELOGTAG, "TIME STEP:" + timeStamp);
         }
+
+        /*for(int i=0;i<rotationVectorDataArrayList.size();i++){
+            Log.d(CAPTURELOGTAG, "Rotation Vectors:" + Arrays.toString(rotationVectorDataArrayList.get(i).getRotationVectorEvent()));
+        }*/
     }
 
     private void printTimeStampData() {
@@ -552,7 +680,7 @@ public class CameraFragment extends Fragment
         } catch (Exception e) {
             e.printStackTrace();
         }*/
-        File root = new File(Environment.getExternalStorageDirectory(), "Hyperlapse Timestamps");
+        /*File root = new File(Environment.getExternalStorageDirectory(), "Hyperlapse Timestamps");
         if (!root.exists()) {
             root.mkdirs();
         }
@@ -579,7 +707,7 @@ public class CameraFragment extends Fragment
             Toast.makeText(getActivity(), "Frame Saved", Toast.LENGTH_SHORT).show();
         } catch (IOException e) {
             Log.e("TAG", "Error in Writing: " + e.getLocalizedMessage());
-        }
+        }*/
 
         /*try {
             File root = new File(Environment.getExternalStorageDirectory(), "Hyperlapse Timestamps");
@@ -608,7 +736,7 @@ public class CameraFragment extends Fragment
         }
         try {
             closePreviewSession();
-            setUpMediaRecorder();
+            //setUpMediaRecorder();
             SurfaceTexture texture = mTextureView.getSurfaceTexture();
             assert texture != null;
             texture.setDefaultBufferSize(mPreviewSize.getWidth(), mPreviewSize.getHeight());
@@ -619,10 +747,13 @@ public class CameraFragment extends Fragment
             surfaces.add(previewSurface);
             mPreviewBuilder.addTarget(previewSurface);
             // Set up Surface for the MediaRecorder
-            Surface mRecorderSurface = mMediaRecorder.getSurface();
+            /*Surface mRecorderSurface = mMediaRecorder.getSurface();
             surfaces.add(mRecorderSurface);
-            mPreviewBuilder.addTarget(mRecorderSurface);
+            mPreviewBuilder.addTarget(mRecorderSurface);*/
 
+            Surface readerSurface = mImageReader.getSurface();
+            surfaces.add(readerSurface);
+            mPreviewBuilder.addTarget(readerSurface);
             // Start a capture session
             // Once the session starts, we can update the UI and start recording
             mCameraDevice.createCaptureSession(surfaces, new CameraCaptureSession.StateCallback() {
@@ -638,7 +769,7 @@ public class CameraFragment extends Fragment
                             mIsRecordingVideo = true;
 
                             // Start recording
-                            mMediaRecorder.start();
+                            // mMediaRecorder.start();
                         }
                     });
                 }
@@ -653,7 +784,7 @@ public class CameraFragment extends Fragment
             }, mBackgroundHandler);
         } catch (CameraAccessException e) {
             e.printStackTrace();
-        } catch (IOException e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
 
@@ -698,10 +829,7 @@ public class CameraFragment extends Fragment
         mMediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
         mMediaRecorder.setVideoSource(MediaRecorder.VideoSource.SURFACE);
         mMediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
-        if (mNextVideoAbsolutePath == null || mNextVideoAbsolutePath.isEmpty()) {
-            mNextVideoAbsolutePath = getVideoFilePath(getActivity());
-        }
-        mMediaRecorder.setOutputFile(mNextVideoAbsolutePath);
+        mMediaRecorder.setOutputFile(getVideoFilePath(getActivity()));
         mMediaRecorder.setVideoEncodingBitRate(10000000);
         mMediaRecorder.setVideoFrameRate(30);
         mMediaRecorder.setVideoSize(mVideoSize.getWidth(), mVideoSize.getHeight());
@@ -719,12 +847,6 @@ public class CameraFragment extends Fragment
         mMediaRecorder.prepare();
     }
 
-    private String getVideoFilePath(Context context) {
-        return context.getExternalFilesDir(null).getAbsolutePath() + "/"
-                + System.currentTimeMillis() + ".mp4";
-    }
-
-
     private void closePreviewSession() {
         if (mPreviewSession != null) {
             mPreviewSession.close();
@@ -737,16 +859,14 @@ public class CameraFragment extends Fragment
         mIsRecordingVideo = false;
         mButtonVideo.setText(R.string.record);
         // Stop recording
-        mMediaRecorder.stop();
-        mMediaRecorder.reset();
+        //mMediaRecorder.stop();
+        //mMediaRecorder.reset();
 
         Activity activity = getActivity();
         if (null != activity) {
-            Toast.makeText(activity, "Video saved: " + mNextVideoAbsolutePath,
-                    Toast.LENGTH_SHORT).show();
-            Log.d(TAG, "Video saved: " + mNextVideoAbsolutePath);
+            Snackbar.make(getView(), "Video Saved", Snackbar.LENGTH_LONG).show();
         }
-        mNextVideoAbsolutePath = null;
+        videoFilePath = null;
         startPreview();
     }
 
@@ -754,46 +874,119 @@ public class CameraFragment extends Fragment
     public void onSensorChanged(SensorEvent event) {
         if (this.accelerometer != null && event.sensor.equals(this.accelerometer)) {
             float[] accelerometerValues = event.values;
-            accelerometerTimeStamp = event.timestamp;
-            Log.d(SENSORSTAG, "Accelerometer Timestamp:" + event.timestamp);
-            logSensorValues("Accelerometer", event);
+            long accelerometerTimeStamp = event.timestamp;
+            // Log.d(SENSORSTAG, "Accelerometer Timestamp:" + event.timestamp);
+            //logSensorValues("Accelerometer", event);
         } else if (this.gyroscope != null && event.sensor.equals(this.gyroscope)) {
 
             float[] gyroscopeValues = event.values;
-            //Gyroscope timestamp
-            gyroscopeTimeStamp = event.timestamp;
+            long gyroscopeTimeStamp = event.timestamp;
             //Current time
-            systemCurrentTimeMillis = System.currentTimeMillis();
+            long systemCurrentTimeMillis = System.currentTimeMillis();
             //Most precise timestamp, with 0 value being when device was last rebooted, used to measure delta with another timestamp on same device.
-            nanoTime = System.nanoTime();
+            long nanoTime = System.nanoTime();
             //Nanoseconds since boot
-            elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos();
+            long elapsedRealTimeNanos = SystemClock.elapsedRealtimeNanos();
+            if (mIsRecordingVideo) {
+                GyroscopeData data = new GyroscopeData(systemCurrentTimeMillis, nanoTime, elapsedRealTimeNanos, gyroscopeTimeStamp, gyroscopeValues);
+                gyroscopeDataArrayList.add(data);
+                // getRotationChangeOverTime(event);
 
-            String timeStampData = "SystemCurrentTimeMillis: " + systemCurrentTimeMillis + "\n" +
+                String sampleGyro = "X: " + gyroscopeValues[0] + "\n" +
+                        "Y: " + gyroscopeValues[1] + "\n" +
+                        "Z: " + gyroscopeValues[2] + "\n" +
+                        "Timestamp: " + gyroscopeTimeStamp + "\n";
+                //  Log.d(SENSORTIMESTAMPLOG,"Gyroscope Sample:" + sampleGyro);
+
+            }
+
+            /*String timeStampData = "SystemCurrentTimeMillis: " + systemCurrentTimeMillis + "\n" +
                     "SystemNano: " + nanoTime + "\n" +
-                    "SystemElapsedRTNanos: " + elapsedRealtimeNanos + "\n" +
+                    "SystemElapsedRTNanos: " + elapsedRealTimeNanos + "\n" +
                     "Gyroscope: " + gyroscopeTimeStamp + "\n" +
                     "SystemNano - Gyroscope delta: " + (nanoTime - gyroscopeTimeStamp) + "\n" +
-                    "SystemElapsed - Gyroscope delta: " + (elapsedRealtimeNanos - gyroscopeTimeStamp) + "\n";
-
+                    "SystemElapsed - Gyroscope delta: " + (elapsedRealTimeNanos - gyroscopeTimeStamp) + "\n";
             //logTimeStampDataOnFile(getActivity(),timeStampData);
-
             if (mIsRecordingVideo)
                 gyroscopeTimeStamps.put(timeStampData);
             //Log.d(SENSORTIMESTAMPLOG, timeStampData);
-
-
             Log.d(SENSORSTAG, "Gyroscope Timestamp:" + event.timestamp);
-            logSensorValues("Gyroscope", event);
+            logSensorValues("Gyroscope", event);*/
+
+
         } else if (this.rotation != null && event.sensor.equals(this.rotation)) {
             float[] rotationValues = event.values;
-            rotationTimeStamp = event.timestamp;
-            Log.d(SENSORSTAG, "Rotation Timestamp:" + event.timestamp);
+            long rotationTimeStamp = event.timestamp;
+            //Current time
+            long systemCurrentTimeMillis = System.currentTimeMillis();
+            //Most precise timestamp, with 0 value being when device was last rebooted, used to measure delta with another timestamp on same device.
+            long nanoTime = System.nanoTime();
+            //Nanoseconds since boot
+            long elapsedRealTimeNanos = SystemClock.elapsedRealtimeNanos();
+            // Log.d(SENSORSTAG, "Rotation Timestamp:" + event.timestamp);
             SensorManager.getRotationMatrixFromVector(
                     mRotationMatrix, event.values);
-            Log.d(SENSORSTAG, "Rotation Matrix: " + Arrays.toString(mRotationMatrix));
-            logSensorValues("Rotation", event);
+            if (mIsRecordingVideo) {
+                RotationVectorData data = new RotationVectorData(systemCurrentTimeMillis, nanoTime, elapsedRealTimeNanos, rotationTimeStamp, rotationValues, mRotationMatrix);
+                rotationVectorDataArrayList.add(data);
+               /*String sampleRotation = "X: " + rotationValues[0] + "\n" +
+                       "Y: " + rotationValues[1] + "\n" +
+                       "Z: " + rotationValues[2] + "\n" +
+                       "Timestamp: " + rotationTimeStamp + "\n" +
+                       "Rotation Matrix" + Arrays.toString(mRotationMatrix);
+               Log.d(SENSORTIMESTAMPLOG,"Rotation Sample:" + sampleRotation);*/
+            }
+
         }
+    }
+
+
+    private void getRotationChangeOverTime(ArrayList<RotationVectorData> rotationVectorDataArrayList) {
+        for (int i = 0; i < rotationVectorDataArrayList.size() - 1; i++) {
+            RotationVectorData oldData = rotationVectorDataArrayList.get(i);
+            RotationVectorData newData = rotationVectorDataArrayList.get(i + 1);
+            float[] rotationCurrent = oldData.getRotationRawEvent();
+            long oldTimeStamp = oldData.getRotationTimeStamp();
+            long newTimeStamp = newData.getRotationTimeStamp();
+            // This timestep's delta rotation to be multiplied by the current rotation after computing it from the gyro sample data.
+            if (oldTimeStamp != 0) {
+                final float dT = (newTimeStamp - oldTimeStamp) * NS2S;
+                // Axis of the rotation sample, not normalized yet.
+                float axisX = newData.getRotationRawEvent()[0];
+                float axisY = newData.getRotationRawEvent()[1];
+                float axisZ = newData.getRotationRawEvent()[2];
+                // Calculate the angular speed of the sample
+                float omegaMagnitude = (float) Math.sqrt(axisX * axisX + axisY * axisY + axisZ * axisZ);
+                // Normalize the rotation vector if it's big enough to get the axis
+                // (that is, EPSILON should represent your maximum allowable margin of error)
+                if (omegaMagnitude > EPSILON) {
+                    axisX /= omegaMagnitude;
+                    axisY /= omegaMagnitude;
+                    axisZ /= omegaMagnitude;
+                }
+
+                // Integrate around this axis with the angular speed by the timestep
+                // in order to get a delta rotation from this sample over the timestep
+                // We will convert this axis-angle representation of the delta rotation
+                // into a quaternion before turning it into the rotation matrix.
+                float thetaOverTwo = omegaMagnitude * dT / 2.0f;
+                float sinThetaOverTwo = (float) Math.sin(thetaOverTwo);
+                float cosThetaOverTwo = (float) Math.cos(thetaOverTwo);
+                deltaRotationVector[0] = sinThetaOverTwo * axisX;
+                deltaRotationVector[1] = sinThetaOverTwo * axisY;
+                deltaRotationVector[2] = sinThetaOverTwo * axisZ;
+                deltaRotationVector[3] = cosThetaOverTwo;
+            }
+
+            oldTimeStamp = newTimeStamp;
+            float[] deltaRotationMatrix = new float[9];
+            SensorManager.getRotationMatrixFromVector(deltaRotationMatrix, deltaRotationVector);
+            Log.d(CAPTURELOGTAG, "Current Rotation:" + Arrays.toString(deltaRotationMatrix));
+            // User code should concatenate the delta rotation we computed with the current rotation
+            // in order to get the updated rotation.
+            // rotationCurrent = rotationCurrent * deltaRotationMatrix;
+        }
+
     }
 
 
@@ -894,8 +1087,10 @@ public class CameraFragment extends Fragment
         return Surface.ROTATION_90; // defaults to landscape
     }
 
+    /**
+     * Initialize sensors for data collection
+     */
     private void initSensors() {
-        Log.d(SENSORSTAG, "initSensors");
         this.sensorManager = (SensorManager) getActivity().getSystemService(Context.SENSOR_SERVICE);
         this.accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
         this.gyroscope = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
@@ -909,6 +1104,9 @@ public class CameraFragment extends Fragment
         mRotationMatrix[15] = 1;
     }
 
+    /**
+     * Register sensors with sensor manager
+     */
     private void registerSensors() {
         Log.d(SENSORSTAG, "registerSensors");
         if (this.accelerometer != null) {
@@ -1015,59 +1213,47 @@ public class CameraFragment extends Fragment
         return true;
     }
 
+    /**
+     * Saves a JPEG {@link Image} into the specified {@link File}.
+     */
+    private static class ImageSaver implements Runnable {
 
-    public static class ErrorDialog extends DialogFragment {
+        /**
+         * The JPEG image
+         */
+        private final Image mImage;
+        /**
+         * The file we save the image into.
+         */
+        private final File mFile;
 
-        private static final String ARG_MESSAGE = "message";
-
-        public static ErrorDialog newInstance(String message) {
-            ErrorDialog dialog = new ErrorDialog();
-            Bundle args = new Bundle();
-            args.putString(ARG_MESSAGE, message);
-            dialog.setArguments(args);
-            return dialog;
+        public ImageSaver(Image image, File file) {
+            mImage = image;
+            mFile = file;
         }
 
         @Override
-        public Dialog onCreateDialog(Bundle savedInstanceState) {
-            final Activity activity = getActivity();
-            return new AlertDialog.Builder(activity)
-                    .setMessage(getArguments().getString(ARG_MESSAGE))
-                    .setPositiveButton(android.R.string.ok, new DialogInterface.OnClickListener() {
-                        @Override
-                        public void onClick(DialogInterface dialogInterface, int i) {
-                            activity.finish();
-                        }
-                    })
-                    .create();
+        public void run() {
+            ByteBuffer buffer = mImage.getPlanes()[0].getBuffer();
+            byte[] bytes = new byte[buffer.remaining()];
+            buffer.get(bytes);
+            FileOutputStream output = null;
+            try {
+                output = new FileOutputStream(mFile);
+                output.write(bytes);
+            } catch (IOException e) {
+                e.printStackTrace();
+            } finally {
+                mImage.close();
+                if (null != output) {
+                    try {
+                        output.close();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
         }
 
     }
-
-    public static class ConfirmationDialog extends DialogFragment {
-
-        @Override
-        public Dialog onCreateDialog(Bundle savedInstanceState) {
-            final Fragment parent = getParentFragment();
-            return new AlertDialog.Builder(getActivity())
-                    .setMessage(R.string.permission_request)
-                    .setPositiveButton(android.R.string.ok, new DialogInterface.OnClickListener() {
-                        @Override
-                        public void onClick(DialogInterface dialog, int which) {
-                            FragmentCompat.requestPermissions(parent, VIDEO_PERMISSIONS,
-                                    REQUEST_VIDEO_PERMISSIONS);
-                        }
-                    })
-                    .setNegativeButton(android.R.string.cancel,
-                            new DialogInterface.OnClickListener() {
-                                @Override
-                                public void onClick(DialogInterface dialog, int which) {
-                                    parent.getActivity().finish();
-                                }
-                            })
-                    .create();
-        }
-
-    }
-
 }

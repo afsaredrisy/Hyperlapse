@@ -4,20 +4,20 @@ package com.sand5.videostabilize.hyperlapse.sensors;
  * Created by jeetdholakia on 1/15/17.
  */
 
-public class AccelerometerData {
+class TestGyroscopeData {
 
     private long systemCurrentTimeMillis;
     private long nanoTime;
     private long elapsedRealtimeNanos;
-    private long accelerometerTimeStamp;
-    private float[] accelerometerEvent;
+    private long GyroscopeTimeStamp;
+    private float[] GyroscopeEvent;
 
-    public AccelerometerData(long systemCurrentTimeMillis, long nanoTime, long elapsedRealtimeNanos, long accelerometerTimeStamp, float[] accelerometerEvent) {
+    public TestGyroscopeData(long systemCurrentTimeMillis, long nanoTime, long elapsedRealtimeNanos, long GyroscopeTimeStamp, float[] GyroscopeEvent) {
         this.systemCurrentTimeMillis = systemCurrentTimeMillis;
         this.nanoTime = nanoTime;
         this.elapsedRealtimeNanos = elapsedRealtimeNanos;
-        this.accelerometerTimeStamp = accelerometerTimeStamp;
-        this.accelerometerEvent = accelerometerEvent;
+        this.GyroscopeTimeStamp = GyroscopeTimeStamp;
+        this.GyroscopeEvent = GyroscopeEvent;
     }
 
     public long getSystemCurrentTimeMillis() {
@@ -44,27 +44,27 @@ public class AccelerometerData {
         this.elapsedRealtimeNanos = elapsedRealtimeNanos;
     }
 
-    public long getAccelerometerTimeStamp() {
-        return accelerometerTimeStamp;
+    public long getGyroscopeTimeStamp() {
+        return GyroscopeTimeStamp;
     }
 
-    public void setAccelerometerTimeStamp(long accelerometerTimeStamp) {
-        this.accelerometerTimeStamp = accelerometerTimeStamp;
+    public void setGyroscopeTimeStamp(long GyroscopeTimeStamp) {
+        this.GyroscopeTimeStamp = GyroscopeTimeStamp;
     }
 
-    public float[] getAccelerometerEvent() {
-        return accelerometerEvent;
+    public float[] getGyroscopeEvent() {
+        return GyroscopeEvent;
     }
 
-    public void setAccelerometerEvent(float[] accelerometerEvent) {
-        this.accelerometerEvent = accelerometerEvent;
+    public void setGyroscopeEvent(float[] GyroscopeEvent) {
+        this.GyroscopeEvent = GyroscopeEvent;
     }
 
     public long getDetlaToNano() {
-        return nanoTime - accelerometerTimeStamp;
+        return nanoTime - GyroscopeTimeStamp;
     }
 
     public long getDeltaToRealTimeElapsed() {
-        return elapsedRealtimeNanos - accelerometerTimeStamp;
+        return elapsedRealtimeNanos - GyroscopeTimeStamp;
     }
 }

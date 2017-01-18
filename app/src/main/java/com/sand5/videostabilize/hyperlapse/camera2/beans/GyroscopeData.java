@@ -1,7 +1,7 @@
-package com.sand5.videostabilize.hyperlapse.sensors;
+package com.sand5.videostabilize.hyperlapse.camera2.beans;
 
 /**
- * Created by jeetdholakia on 1/15/17.
+ * Created by jeetdholakia on 1/16/17.
  */
 
 public class GyroscopeData {

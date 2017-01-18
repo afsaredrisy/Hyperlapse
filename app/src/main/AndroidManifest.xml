@@ -54,7 +54,8 @@
         <activity
             android:name=".tests.SensorFusionActivity"
             android:label="@string/app_name" />
-        <activity android:name=".sensors.SensorTestActivity"></activity>
+        <activity android:name=".sensors.SensorTestActivity" />
+        <activity android:name=".camera2.activities.VideoDecoderActivity"></activity>
     </application>
 
 </manifest>
