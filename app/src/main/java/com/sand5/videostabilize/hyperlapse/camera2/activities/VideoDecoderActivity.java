@@ -89,7 +89,8 @@ public class VideoDecoderActivity extends AppCompatActivity {
         Bitmap bitmap = Bitmap.createBitmap(bgrMat.cols(), bgrMat.rows(), Bitmap.Config.ARGB_8888);
         Utils.matToBitmap(rgbaMatOut, bitmap);
         yuvMatTestImageView.setImageBitmap(bitmap);
-       /* //Mat mRgbaMat = new Mat();
+
+        /* //Mat mRgbaMat = new Mat();
         Mat mRgbaMat = new Mat();
         Imgproc.cvtColor( mYUVMat, mRgbaMat, Imgproc.COLOR_YUV420sp2RGBA,4);
         // Draw Bitmap New:

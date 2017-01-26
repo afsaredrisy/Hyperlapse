@@ -49,23 +49,25 @@ dependencies {
     androidTestCompile('com.android.support.test.espresso:espresso-core:2.2.2', {
         exclude group: 'com.android.support', module: 'support-annotations'
     })
-    compile 'com.android.support:appcompat-v7:25.1.0'
-    compile "com.android.support:support-v13:25.1.0"
-    compile 'com.android.support:design:25.1.0'
-    testCompile 'junit:junit:4.12'
     compile project(':openCVLibrary320')
+    compile 'com.android.support:appcompat-v7:25.1.0'
+    compile 'com.android.support:support-v13:25.1.0'
+    compile 'com.android.support:design:25.1.0'
     compile 'com.kbeanie:multipicker:1.1.3@aar'
     compile 'com.writingminds:FFmpegAndroid:0.3.2'
     compile 'com.jakewharton:butterknife:8.4.0'
-    annotationProcessor 'com.jakewharton:butterknife-compiler:8.4.0'
     compile 'org.jcodec:jcodec-android:0.1.9'
     compile 'com.google.android.gms:play-services-location:10.0.1'
-    compile "com.github.nisrulz:easydeviceinfo-base:2.3.2"
-    debugCompile 'com.squareup.leakcanary:leakcanary-android:1.5'
+    compile 'com.github.nisrulz:easydeviceinfo-base:2.3.2'
     compile 'pub.devrel:easypermissions:0.2.1'
     compile 'com.orhanobut:logger:1.15'
     compile 'com.parse.bolts:bolts-tasks:1.4.0'
     compile 'org.greenrobot:eventbus:3.0.0'
+    compile 'com.squareup:otto:1.3.8'
+    compile 'com.android.support:support-v4:25.1.0'
+    testCompile 'junit:junit:4.12'
+    annotationProcessor 'com.jakewharton:butterknife-compiler:8.4.0'
+    debugCompile 'com.squareup.leakcanary:leakcanary-android:1.5'
 }
 
 apply plugin: 'com.google.gms.google-services'

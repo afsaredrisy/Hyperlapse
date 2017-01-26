@@ -16,22 +16,60 @@
 
 package com.sand5.videostabilize.hyperlapse.camera2.activities;
 
-import android.app.Activity;
 import android.os.Bundle;
+import android.support.v4.app.Fragment;
+import android.support.v4.app.FragmentManager;
+import android.support.v4.app.FragmentStatePagerAdapter;
+import android.support.v4.view.PagerAdapter;
+import android.support.v4.view.ViewPager;
+import android.support.v7.app.AppCompatActivity;
+import android.widget.FrameLayout;
 
 import com.sand5.videostabilize.hyperlapse.R;
 import com.sand5.videostabilize.hyperlapse.camera2.fragments.CameraFragment;
+import com.sand5.videostabilize.hyperlapse.camera2.fragments.RenderingFragment;
 
-public class CameraActivity extends Activity {
+import butterknife.BindView;
+import butterknife.ButterKnife;
+
+public class CameraActivity extends AppCompatActivity {
+
+    private static final int NUM_PAGES = 2;
+    @BindView(R.id.camera_pager)
+    ViewPager cameraPager;
+    @BindView(R.id.container)
+    FrameLayout container;
+    private PagerAdapter mPagerAdapter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_camera);
-        if (null == savedInstanceState) {
-            getFragmentManager().beginTransaction()
-                    .replace(R.id.container, CameraFragment.newInstance())
-                    .commit();
+        ButterKnife.bind(this);
+        mPagerAdapter = new ScreenSlidePagerAdapter(getSupportFragmentManager());
+        cameraPager.setAdapter(mPagerAdapter);
+    }
+
+    private class ScreenSlidePagerAdapter extends FragmentStatePagerAdapter {
+        public ScreenSlidePagerAdapter(FragmentManager fm) {
+            super(fm);
+        }
+
+        @Override
+        public Fragment getItem(int position) {
+            switch (position) {
+                case 0:
+                    return new CameraFragment();
+                case 1:
+                    return new RenderingFragment();
+                default:
+                    return new CameraFragment();
+            }
+        }
+
+        @Override
+        public int getCount() {
+            return NUM_PAGES;
         }
     }
 

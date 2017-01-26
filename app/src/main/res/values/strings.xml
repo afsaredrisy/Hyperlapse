@@ -27,4 +27,7 @@
     <string name="error_configure_failed">Camera configuration error, please try again</string>
     <string name="action_play">Play</string>
 
+    <!-- TODO: Remove or change this placeholder text -->
+    <string name="hello_blank_fragment">Hello blank fragment</string>
+
 </resources>
