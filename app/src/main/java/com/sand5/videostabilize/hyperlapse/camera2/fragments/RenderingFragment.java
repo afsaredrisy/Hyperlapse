@@ -12,9 +12,11 @@ import com.sand5.videostabilize.hyperlapse.R;
 import com.sand5.videostabilize.hyperlapse.camera2.beans.AccelerometerData;
 import com.sand5.videostabilize.hyperlapse.camera2.beans.FrameMat;
 import com.sand5.videostabilize.hyperlapse.camera2.beans.GyroscopeData;
+import com.sand5.videostabilize.hyperlapse.camera2.beans.IntrinsicMatrix;
 import com.sand5.videostabilize.hyperlapse.camera2.beans.SmallRotationVectorData;
 import com.sand5.videostabilize.hyperlapse.camera2.beans.SynchronizedFrameTimeStamp;
 import com.sand5.videostabilize.hyperlapse.camera2.utils.ImageFramesDataStore;
+import com.sand5.videostabilize.hyperlapse.camera2.utils.MatrixUtils;
 import com.sand5.videostabilize.hyperlapse.camera2.utils.RotationVectorUtils;
 import com.sand5.videostabilize.hyperlapse.camera2.utils.SynchronizedFrameTimeStampDataStore;
 
@@ -36,7 +38,7 @@ import org.opencv.imgproc.Imgproc;
 import org.opencv.video.Video;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
+import java.util.Arrays;
 
 import butterknife.ButterKnife;
 
@@ -44,12 +46,19 @@ import butterknife.ButterKnife;
 public class RenderingFragment extends Fragment {
 
     ArrayList<float[]> rotationVectors = new ArrayList<>();
+    float[][] rotationMatrix2DArray;
+    float[][] transformationMatrix2DArray;
     private ArrayList<GyroscopeData> gyroscopeDataArrayList = new ArrayList<>();
     private MatOfPoint prevFeatures;
     private MatOfPoint nextFeatures;
     private MatOfPoint features;
     private MatOfByte status;
     private MatOfFloat err;
+    private float[] transformationMatrixArray;
+    private float[][] translationMatrix2DArray;
+    private IntrinsicMatrix intrinsicMatrix;
+    private float[] intrinsicMatrixArray = new float[12];
+    private float[][] intrinsic2DArray = new float[3][4];
 
     public RenderingFragment() {
         // Required empty public constructor
@@ -72,6 +81,7 @@ public class RenderingFragment extends Fragment {
                              Bundle savedInstanceState) {
         View view = inflater.inflate(R.layout.fragment_rendering, container, false);
         ButterKnife.bind(this, view);
+
         return view;
     }
 
@@ -84,6 +94,26 @@ public class RenderingFragment extends Fragment {
     @Subscribe(threadMode = ThreadMode.ASYNC)
     public void onGyroscopeDataAvailable(GyroscopeData gyroscopeData) {
         Logger.d("Received gyro!");
+
+    }
+
+    @Subscribe(threadMode = ThreadMode.POSTING)
+    public void onIntrinsicMatrix(IntrinsicMatrix intrinsicMatrix) {
+        Logger.d("Received intrinsic matrix!");
+        this.intrinsicMatrix = intrinsicMatrix;
+        intrinsic2DArray = new float[][]{
+                {intrinsicMatrix.getFocalLengthAngles()[0], intrinsicMatrix.getRollingShutterSkew(), intrinsicMatrix.getPrinciplePoints()[0], 0},
+                {0, intrinsicMatrix.getFocalLengthAngles()[1], intrinsicMatrix.getPrinciplePoints()[1], 0},
+                {0, 0, 1, 0}
+        };
+
+        translationMatrix2DArray = new float[][]{
+                {1, 0, 0, 0},
+                {0, 1, 0, 0},
+                {0, 0, 0, intrinsicMatrix.getFocalLength()},
+                {0, 0, 0, 1}
+        };
+
 
     }
 
@@ -101,12 +131,13 @@ public class RenderingFragment extends Fragment {
 
     @Subscribe(threadMode = ThreadMode.POSTING)
     public void startProcessing(String message) {
-        Logger.d("Start Processing");
+        //Logger.d("Start Processing");
         getRotationVectorForEachFrame();
+
     }
 
     private void getRotationVectorForEachFrame() {
-        LinkedHashMap<Long, Mat> frameHashMap = ImageFramesDataStore.getAll();
+        //Logger.d("Get Rotation Vector for each frame");
         ArrayList<Long> imageFrameTimeStamps = new ArrayList<>(ImageFramesDataStore.getAll().keySet());
         for (int i = 0; i < imageFrameTimeStamps.size(); i++) {
             Long timeStamp = imageFrameTimeStamps.get(i);
@@ -114,19 +145,39 @@ public class RenderingFragment extends Fragment {
         }
 
         SynchronizedFrameTimeStampDataStore.printAll();
-        //convertMatToRgbaMat();
+        //Logger.d("finished!");
+        convertMatToRgbaMat();
     }
 
     private void convertMatToRgbaMat() {
         for (SynchronizedFrameTimeStamp synchronizedFrameTimeStamp : SynchronizedFrameTimeStampDataStore.getSynchronizedFrameTimeStampArrayList()) {
             Mat firstMat = synchronizedFrameTimeStamp.getMat();
+            if (null == firstMat) {
+                Logger.d("First mat null");
+            } else {
+                Logger.d("First mat not null");
+            }
             Mat bgrMat = new Mat();
             Imgproc.cvtColor(firstMat, bgrMat, Imgproc.COLOR_YUV2BGR_I420);
             Mat rgbaMatOut = new Mat();
             Imgproc.cvtColor(bgrMat, rgbaMatOut, Imgproc.COLOR_BGR2RGBA, 0);
             synchronizedFrameTimeStamp.setMat(rgbaMatOut);
+            float[] rotationMatrix = synchronizedFrameTimeStamp.getRotationMatrix();
+            rotationMatrix2DArray = new float[][]{
+                    {rotationMatrix[0], rotationMatrix[1], rotationMatrix[2], rotationMatrix[3]},
+                    {rotationMatrix[4], rotationMatrix[5], rotationMatrix[6], rotationMatrix[7]},
+                    {rotationMatrix[8], rotationMatrix[9], rotationMatrix[10], rotationMatrix[11]},
+                    {rotationMatrix[12], rotationMatrix[13], rotationMatrix[14], rotationMatrix[15]}
+            };
         }
-        useOpenCVSorcery();
+
+        float[][] tempResult = MatrixUtils.multiplyMatrices(translationMatrix2DArray, rotationMatrix2DArray);
+        transformationMatrix2DArray = MatrixUtils.multiplyMatrices(intrinsic2DArray, tempResult);
+        transformationMatrixArray = MatrixUtils.get1DFrom2D(transformationMatrix2DArray);
+        Logger.d(Arrays.deepToString(transformationMatrix2DArray));
+        Logger.d(Arrays.toString(transformationMatrixArray));
+
+        //useOpenCVSorcery();
     }
 
     private void useOpenCVSorcery() {

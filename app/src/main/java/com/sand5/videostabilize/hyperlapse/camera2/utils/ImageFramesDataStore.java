@@ -1,5 +1,6 @@
 package com.sand5.videostabilize.hyperlapse.camera2.utils;
 
+import com.orhanobut.logger.Logger;
 import com.sand5.videostabilize.hyperlapse.camera2.beans.FrameMat;
 
 import org.opencv.core.Mat;
@@ -16,11 +17,15 @@ public class ImageFramesDataStore {
 
     public static void add(FrameMat frameMat) {
         imageFrameMats.put(frameMat.getTimeStamp(), frameMat.getMat());
+        Mat testMat = frameMat.getMat();
+        if (null == testMat) {
+            Logger.d("ImageDataStore Mat null");
+        } else {
+            Logger.d("ImageDataStore Mat not null");
+        }
+        //Logger.d("Image Data store size:" + imageFrameMats.size());
     }
-
     public static LinkedHashMap<Long, Mat> getAll() {
         return imageFrameMats;
     }
-
-
 }

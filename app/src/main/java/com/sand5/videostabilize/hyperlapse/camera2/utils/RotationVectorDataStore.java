@@ -28,7 +28,6 @@ public class RotationVectorDataStore {
 
     public void getInstance(int key) {
 
-
     }
 
 }

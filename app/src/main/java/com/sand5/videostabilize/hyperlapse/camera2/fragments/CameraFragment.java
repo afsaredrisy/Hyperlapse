@@ -152,11 +152,9 @@ public class CameraFragment extends Fragment
                 Long systemTime = System.nanoTime();
                 Mat mat = ImageUtils.imageToMat(image);
                 FrameMat frameMat = new FrameMat(systemTime, mat);
-                Log.d("IMAGEAVAILABLE:", "TimeStamp:" + systemTime);
                 ImageFramesDataStore.add(frameMat);
+                //Logger.d("OnImageAvailable");
                 //EventBus.getDefault().post(frameMat);
-
-
                 // LinkedHashMap<Long,Mat> frameMatLinkedHashMap = new LinkedHashMap<>();
                 //frameMatLinkedHashMap.put(systemTime,mat);
                 /*Mat bgrMat = new Mat(image.getHeight(), image.getWidth(), CvType.CV_8UC4);
@@ -525,13 +523,13 @@ public class CameraFragment extends Fragment
                 @Override
                 public void onCaptureStarted(CameraCaptureSession session, CaptureRequest request, long timestamp, long frameNumber) {
                     super.onCaptureStarted(session, request, timestamp, frameNumber);
-                    Log.d(CAPTURELOGTAG, "OnCaptureStarted");
+                    // Log.d(CAPTURELOGTAG, "OnCaptureStarted");
                 }
 
                 @Override
                 public void onCaptureProgressed(CameraCaptureSession session, CaptureRequest request, CaptureResult partialResult) {
                     super.onCaptureProgressed(session, request, partialResult);
-                    Log.d(CAPTURELOGTAG, "onCaptureProgressed");
+                    // Log.d(CAPTURELOGTAG, "onCaptureProgressed");
                 }
 
                 @Override
@@ -541,7 +539,7 @@ public class CameraFragment extends Fragment
                     rollingShutterSkew = result.get(CaptureResult.SENSOR_ROLLING_SHUTTER_SKEW);
                     focalLength = result.get(CaptureResult.LENS_FOCAL_LENGTH);
                     focusDistance = result.get(CaptureResult.LENS_FOCUS_DISTANCE);
-                    Log.d(CAPTURELOGTAG, "onCaptureCompleted");
+                    // Log.d(CAPTURELOGTAG, "onCaptureCompleted");
 
                     /*
                     Log.d(CAPTURELOGTAG, "Rolling shutter skew: " + result.get(CaptureResult.SENSOR_ROLLING_SHUTTER_SKEW));
@@ -582,13 +580,13 @@ public class CameraFragment extends Fragment
                 @Override
                 public void onCaptureFailed(CameraCaptureSession session, CaptureRequest request, CaptureFailure failure) {
                     super.onCaptureFailed(session, request, failure);
-                    Log.d(CAPTURELOGTAG, "onCaptureFailed");
+                    // Log.d(CAPTURELOGTAG, "onCaptureFailed");
                 }
 
                 @Override
                 public void onCaptureSequenceCompleted(CameraCaptureSession session, int sequenceId, long frameNumber) {
                     super.onCaptureSequenceCompleted(session, sequenceId, frameNumber);
-                    Log.d(CAPTURELOGTAG, "onCaptureSequenceCompleted");
+                    //  Log.d(CAPTURELOGTAG, "onCaptureSequenceCompleted");
                     intrinsicMatrix = new IntrinsicMatrix(rollingShutterSkew, focalLength, focusDistance, focalLengthAngles, principlePoints);
                     //saveVideoProcessingData();
                     printTimeStampData();
@@ -603,13 +601,13 @@ public class CameraFragment extends Fragment
                 @Override
                 public void onCaptureSequenceAborted(CameraCaptureSession session, int sequenceId) {
                     super.onCaptureSequenceAborted(session, sequenceId);
-                    Log.d(CAPTURELOGTAG, "onCaptureSequenceAborted");
+                    // Log.d(CAPTURELOGTAG, "onCaptureSequenceAborted");
                 }
 
                 @Override
                 public void onCaptureBufferLost(CameraCaptureSession session, CaptureRequest request, Surface target, long frameNumber) {
                     super.onCaptureBufferLost(session, request, target, frameNumber);
-                    Log.d(CAPTURELOGTAG, "onCaptureBufferLost");
+                    // Log.d(CAPTURELOGTAG, "onCaptureBufferLost");
 
                 }
             }, mBackgroundHandler);
